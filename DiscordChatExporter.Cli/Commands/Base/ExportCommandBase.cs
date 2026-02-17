@@ -78,8 +78,9 @@ public abstract class ExportCommandBase : DiscordCommandBase
     )]
     public MessageFilter MessageFilter { get; init; } = MessageFilter.Null;
 
-    [CommandOption("purge", Description = "Delete included messages instead of exporting them.")]
-    public bool ShouldPurge { get; init; } = false;
+    protected virtual bool ShouldPurge => false;
+
+    protected virtual bool IsDryRun => false;
 
     [CommandOption(
         "parallel",
@@ -147,12 +148,14 @@ public abstract class ExportCommandBase : DiscordCommandBase
     [field: AllowNull, MaybeNull]
     protected ChannelExporter Exporter => field ??= new ChannelExporter(Discord);
 
-    private async ValueTask PurgeChannelAsync(
+    private async ValueTask<int> PurgeChannelAsync(
         Channel channel,
         IProgress<Percentage>? progress = null,
         CancellationToken cancellationToken = default
     )
     {
+        var messageCount = 0;
+
         await foreach (
             var message in Discord.GetMessagesAsync(
                 channel.Id,
@@ -166,8 +169,13 @@ public abstract class ExportCommandBase : DiscordCommandBase
             if (!MessageFilter.IsMatch(message))
                 continue;
 
-            await Discord.DeleteMessageAsync(channel.Id, message.Id, cancellationToken);
+            if (!IsDryRun)
+                await Discord.DeleteMessageAsync(channel.Id, message.Id, cancellationToken);
+
+            messageCount++;
         }
+
+        return messageCount;
     }
 
     protected async ValueTask ExportAsync(IConsole console, IReadOnlyList<Channel> channels)
@@ -255,6 +263,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
         // Export
         var errorsByChannel = new ConcurrentDictionary<Channel, string>();
         var warningsByChannel = new ConcurrentDictionary<Channel, string>();
+        var purgeMessageCount = 0;
 
         await console.Output.WriteLineAsync(
             $"{(ShouldPurge ? "Purging" : "Exporting")} {unwrappedChannels.Count} channel(s)..."
@@ -316,10 +325,14 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                     }
                                     else
                                     {
-                                        await PurgeChannelAsync(
+                                        var channelPurgeMessageCount = await PurgeChannelAsync(
                                             channel,
                                             progress.ToPercentageBased(),
                                             innerCancellationToken
+                                        );
+                                        Interlocked.Add(
+                                            ref purgeMessageCount,
+                                            channelPurgeMessageCount
                                         );
                                     }
                                 }
@@ -343,6 +356,15 @@ public abstract class ExportCommandBase : DiscordCommandBase
             await console.Output.WriteLineAsync(
                 $"Successfully {(ShouldPurge ? "purged" : "exported")} {unwrappedChannels.Count - errorsByChannel.Count} channel(s)."
             );
+
+            if (ShouldPurge)
+            {
+                await console.Output.WriteLineAsync(
+                    IsDryRun
+                        ? $"Dry run: {purgeMessageCount} message(s) would be deleted."
+                        : $"Deleted {purgeMessageCount} message(s)."
+                );
+            }
         }
 
         // Print warnings

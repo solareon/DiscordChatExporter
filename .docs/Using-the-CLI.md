@@ -40,6 +40,10 @@ Type the following command in your terminal of choice, then press ENTER to run i
 | exportdm                | Exports all direct message channels                  |
 | exportguild             | Exports all channels within the specified server     |
 | exportall               | Exports all accessible channels                      |
+| purge                   | Deletes messages from one or multiple channels       |
+| purgedm                 | Deletes messages from all direct message channels    |
+| purgeguild              | Deletes messages from all channels in a server       |
+| purgeall                | Deletes messages from all accessible channels        |
 | channels                | Outputs the list of channels in the given server     |
 | dm                      | Outputs the list of direct message channels          |
 | guilds                  | Outputs the list of accessible servers               |
@@ -67,13 +71,19 @@ You can quickly export with DCE's default settings by using just `-t token` and 
 ./DiscordChatExporter.Cli export -t "mfa.Ifrn" -c 53555
 ```
 
-#### Purging messages instead of exporting
+#### Purging messages
 
-Use `--purge` with any export command (`export`, `exportguild`, `exportdm`, `exportall`) to delete
-messages that match the selected channel set and filters.
+Use the purge commands (`purge`, `purgeguild`, `purgedm`, `purgeall`) to delete messages
+that match the selected channel set and filters.
 
 ```console
-./DiscordChatExporter.Cli export -t "mfa.Ifrn" -c 53555 --after 2024-01-01 --filter "from:Tyrrrz" --purge
+./DiscordChatExporter.Cli purge -t "mfa.Ifrn" -c 53555 --after 2024-01-01 --filter "from:Tyrrrz"
+```
+
+Use `--dry-run` to print how many messages would be deleted without deleting anything.
+
+```console
+./DiscordChatExporter.Cli purge -t "mfa.Ifrn" -c 53555 --filter "from:Tyrrrz" --dry-run
 ```
 
 #### Changing the format
