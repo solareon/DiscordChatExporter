@@ -67,6 +67,15 @@ You can quickly export with DCE's default settings by using just `-t token` and 
 ./DiscordChatExporter.Cli export -t "mfa.Ifrn" -c 53555
 ```
 
+#### Purging messages instead of exporting
+
+Use `--purge` with any export command (`export`, `exportguild`, `exportdm`, `exportall`) to delete
+messages that match the selected channel set and filters.
+
+```console
+./DiscordChatExporter.Cli export -t "mfa.Ifrn" -c 53555 --after 2024-01-01 --filter "from:Tyrrrz" --purge
+```
+
 #### Changing the format
 
 You can change the export format to `HtmlDark`, `HtmlLight`, `PlainText` `Json` or `Csv` with `-f format`. The default

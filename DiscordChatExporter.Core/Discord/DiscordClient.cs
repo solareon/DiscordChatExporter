@@ -26,7 +26,8 @@ public class DiscordClient(
     private readonly Uri _baseUri = new("https://discord.com/api/v10/", UriKind.Absolute);
     private TokenKind? _resolvedTokenKind;
 
-    private async ValueTask<HttpResponseMessage> GetResponseAsync(
+    private async ValueTask<HttpResponseMessage> SendResponseAsync(
+        HttpMethod method,
         string url,
         TokenKind tokenKind,
         CancellationToken cancellationToken = default
@@ -35,7 +36,7 @@ public class DiscordClient(
         return await Http.ResponseResiliencePipeline.ExecuteAsync(
             async innerCancellationToken =>
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_baseUri, url));
+                using var request = new HttpRequestMessage(method, new Uri(_baseUri, url));
 
                 // Don't validate because the token can have special characters
                 // https://github.com/Tyrrrz/DiscordChatExporter/issues/828
@@ -101,7 +102,8 @@ public class DiscordClient(
             return _resolvedTokenKind.Value;
 
         // Try authenticating as a user
-        using var userResponse = await GetResponseAsync(
+        using var userResponse = await SendResponseAsync(
+            HttpMethod.Get,
             "users/@me",
             TokenKind.User,
             cancellationToken
@@ -111,7 +113,8 @@ public class DiscordClient(
             return (_resolvedTokenKind = TokenKind.User).Value;
 
         // Try authenticating as a bot
-        using var botResponse = await GetResponseAsync(
+        using var botResponse = await SendResponseAsync(
+            HttpMethod.Get,
             "users/@me",
             TokenKind.Bot,
             cancellationToken
@@ -127,7 +130,19 @@ public class DiscordClient(
         string url,
         CancellationToken cancellationToken = default
     ) =>
-        await GetResponseAsync(
+        await SendResponseAsync(
+            HttpMethod.Get,
+            url,
+            await ResolveTokenKindAsync(cancellationToken),
+            cancellationToken
+        );
+
+    private async ValueTask<HttpResponseMessage> DeleteResponseAsync(
+        string url,
+        CancellationToken cancellationToken = default
+    ) =>
+        await SendResponseAsync(
+            HttpMethod.Delete,
             url,
             await ResolveTokenKindAsync(cancellationToken),
             cancellationToken
@@ -694,5 +709,42 @@ public class DiscordClient(
             if (count <= 0)
                 yield break;
         }
+    }
+
+    public async ValueTask DeleteMessageAsync(
+        Snowflake channelId,
+        Snowflake messageId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var url = $"channels/{channelId}/messages/{messageId}";
+
+        using var response = await DeleteResponseAsync(url, cancellationToken);
+
+        if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound)
+            return;
+
+        throw response.StatusCode switch
+        {
+            HttpStatusCode.Unauthorized => throw new DiscordChatExporterException(
+                "Authentication token is invalid.",
+                true
+            ),
+
+            HttpStatusCode.Forbidden => throw new DiscordChatExporterException(
+                $"Request to '{url}' failed: forbidden."
+            ),
+
+            _ => throw new DiscordChatExporterException(
+                $"""
+                Request to '{url}' failed: {response
+                    .StatusCode.ToString()
+                    .ToSpaceSeparatedWords()
+                    .ToLowerInvariant()}.
+                Response content: {await response.Content.ReadAsStringAsync(cancellationToken)}
+                """,
+                true
+            ),
+        };
     }
 }

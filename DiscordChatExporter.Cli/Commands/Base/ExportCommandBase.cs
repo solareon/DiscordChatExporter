@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CliFx.Attributes;
 using CliFx.Exceptions;
@@ -77,9 +78,12 @@ public abstract class ExportCommandBase : DiscordCommandBase
     )]
     public MessageFilter MessageFilter { get; init; } = MessageFilter.Null;
 
+    [CommandOption("purge", Description = "Delete included messages instead of exporting them.")]
+    public bool ShouldPurge { get; init; } = false;
+
     [CommandOption(
         "parallel",
-        Description = "Limits how many channels can be exported in parallel."
+        Description = "Limits how many channels can be processed in parallel."
     )]
     public int ParallelLimit { get; init; } = 1;
 
@@ -143,19 +147,42 @@ public abstract class ExportCommandBase : DiscordCommandBase
     [field: AllowNull, MaybeNull]
     protected ChannelExporter Exporter => field ??= new ChannelExporter(Discord);
 
+    private async ValueTask PurgeChannelAsync(
+        Channel channel,
+        IProgress<Percentage>? progress = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await foreach (
+            var message in Discord.GetMessagesAsync(
+                channel.Id,
+                After,
+                Before,
+                progress,
+                cancellationToken
+            )
+        )
+        {
+            if (!MessageFilter.IsMatch(message))
+                continue;
+
+            await Discord.DeleteMessageAsync(channel.Id, message.Id, cancellationToken);
+        }
+    }
+
     protected async ValueTask ExportAsync(IConsole console, IReadOnlyList<Channel> channels)
     {
         var cancellationToken = console.RegisterCancellationHandler();
 
         // Asset reuse can only be enabled if the download assets option is set
         // https://github.com/Tyrrrz/DiscordChatExporter/issues/425
-        if (ShouldReuseAssets && !ShouldDownloadAssets)
+        if (!ShouldPurge && ShouldReuseAssets && !ShouldDownloadAssets)
         {
             throw new CommandException("Option --reuse-media cannot be used without --media.");
         }
 
         // Assets directory can only be specified if the download assets option is set
-        if (!string.IsNullOrWhiteSpace(AssetsDirPath) && !ShouldDownloadAssets)
+        if (!ShouldPurge && !string.IsNullOrWhiteSpace(AssetsDirPath) && !ShouldDownloadAssets)
         {
             throw new CommandException("Option --media-dir cannot be used without --media.");
         }
@@ -200,33 +227,38 @@ public abstract class ExportCommandBase : DiscordCommandBase
             await console.Output.WriteLineAsync($"Fetched {fetchedThreadsCount} thread(s).");
         }
 
-        // Make sure the user does not try to export multiple channels into one file.
-        // Output path must either be a directory or contain template tokens for this to work.
-        // https://github.com/Tyrrrz/DiscordChatExporter/issues/799
-        // https://github.com/Tyrrrz/DiscordChatExporter/issues/917
-        var isValidOutputPath =
-            // Anything is valid when exporting a single channel
-            unwrappedChannels.Count <= 1
-            // When using template tokens, assume the user knows what they're doing
-            || OutputPath.Contains('%')
-            // Otherwise, require an existing directory or an unambiguous directory path
-            || Directory.Exists(OutputPath)
-            || Path.EndsInDirectorySeparator(OutputPath);
-
-        if (!isValidOutputPath)
+        if (!ShouldPurge)
         {
-            throw new CommandException(
-                "Attempted to export multiple channels, but the output path is neither a directory nor a template. "
-                    + "If the provided output path is meant to be treated as a directory, make sure it ends with a slash. "
-                    + $"Provided output path: '{OutputPath}'."
-            );
+            // Make sure the user does not try to export multiple channels into one file.
+            // Output path must either be a directory or contain template tokens for this to work.
+            // https://github.com/Tyrrrz/DiscordChatExporter/issues/799
+            // https://github.com/Tyrrrz/DiscordChatExporter/issues/917
+            var isValidOutputPath =
+                // Anything is valid when exporting a single channel
+                unwrappedChannels.Count <= 1
+                // When using template tokens, assume the user knows what they're doing
+                || OutputPath.Contains('%')
+                // Otherwise, require an existing directory or an unambiguous directory path
+                || Directory.Exists(OutputPath)
+                || Path.EndsInDirectorySeparator(OutputPath);
+
+            if (!isValidOutputPath)
+            {
+                throw new CommandException(
+                    "Attempted to export multiple channels, but the output path is neither a directory nor a template. "
+                        + "If the provided output path is meant to be treated as a directory, make sure it ends with a slash. "
+                        + $"Provided output path: '{OutputPath}'."
+                );
+            }
         }
 
         // Export
         var errorsByChannel = new ConcurrentDictionary<Channel, string>();
         var warningsByChannel = new ConcurrentDictionary<Channel, string>();
 
-        await console.Output.WriteLineAsync($"Exporting {unwrappedChannels.Count} channel(s)...");
+        await console.Output.WriteLineAsync(
+            $"{(ShouldPurge ? "Purging" : "Exporting")} {unwrappedChannels.Count} channel(s)..."
+        );
         await console
             .CreateProgressTicker()
             .HideCompleted(
@@ -252,33 +284,44 @@ public abstract class ExportCommandBase : DiscordCommandBase
                                 Markup.Escape(channel.GetHierarchicalName()),
                                 async progress =>
                                 {
-                                    var guild = await Discord.GetGuildAsync(
-                                        channel.GuildId,
-                                        innerCancellationToken
-                                    );
+                                    if (!ShouldPurge)
+                                    {
+                                        var guild = await Discord.GetGuildAsync(
+                                            channel.GuildId,
+                                            innerCancellationToken
+                                        );
 
-                                    var request = new ExportRequest(
-                                        guild,
-                                        channel,
-                                        OutputPath,
-                                        AssetsDirPath,
-                                        ExportFormat,
-                                        After,
-                                        Before,
-                                        PartitionLimit,
-                                        MessageFilter,
-                                        ShouldFormatMarkdown,
-                                        ShouldDownloadAssets,
-                                        ShouldReuseAssets,
-                                        Locale,
-                                        IsUtcNormalizationEnabled
-                                    );
+                                        var request = new ExportRequest(
+                                            guild,
+                                            channel,
+                                            OutputPath,
+                                            AssetsDirPath,
+                                            ExportFormat,
+                                            After,
+                                            Before,
+                                            PartitionLimit,
+                                            MessageFilter,
+                                            ShouldFormatMarkdown,
+                                            ShouldDownloadAssets,
+                                            ShouldReuseAssets,
+                                            Locale,
+                                            IsUtcNormalizationEnabled
+                                        );
 
-                                    await Exporter.ExportChannelAsync(
-                                        request,
-                                        progress.ToPercentageBased(),
-                                        innerCancellationToken
-                                    );
+                                        await Exporter.ExportChannelAsync(
+                                            request,
+                                            progress.ToPercentageBased(),
+                                            innerCancellationToken
+                                        );
+                                    }
+                                    else
+                                    {
+                                        await PurgeChannelAsync(
+                                            channel,
+                                            progress.ToPercentageBased(),
+                                            innerCancellationToken
+                                        );
+                                    }
                                 }
                             );
                         }
@@ -298,7 +341,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
         using (console.WithForegroundColor(ConsoleColor.White))
         {
             await console.Output.WriteLineAsync(
-                $"Successfully exported {unwrappedChannels.Count - errorsByChannel.Count} channel(s)."
+                $"Successfully {(ShouldPurge ? "purged" : "exported")} {unwrappedChannels.Count - errorsByChannel.Count} channel(s)."
             );
         }
 
@@ -331,7 +374,9 @@ public abstract class ExportCommandBase : DiscordCommandBase
 
             using (console.WithForegroundColor(ConsoleColor.Red))
             {
-                await console.Error.WriteLineAsync("Failed to export the following channel(s):");
+                await console.Error.WriteLineAsync(
+                    $"Failed to {(ShouldPurge ? "purge" : "export")} the following channel(s):"
+                );
             }
 
             foreach (var (channel, message) in errorsByChannel)
@@ -347,7 +392,7 @@ public abstract class ExportCommandBase : DiscordCommandBase
         // Fail the command only if ALL channels failed to export.
         // If only some channels failed to export, it's okay.
         if (errorsByChannel.Count >= unwrappedChannels.Count)
-            throw new CommandException("Export failed.");
+            throw new CommandException($"{(ShouldPurge ? "Purge" : "Export")} failed.");
     }
 
     public override async ValueTask ExecuteAsync(IConsole console)
