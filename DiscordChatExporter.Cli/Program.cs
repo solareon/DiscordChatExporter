@@ -15,6 +15,10 @@ public static class Program
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(ExportChannelsCommand))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(ExportDirectMessagesCommand))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(ExportGuildCommand))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(PurgeAllCommand))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(PurgeChannelsCommand))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(PurgeDirectMessagesCommand))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(PurgeGuildCommand))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(GetChannelsCommand))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(GetDirectChannelsCommand))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(GetGuildsCommand))]
@@ -32,6 +36,10 @@ public static class Program
             .AddCommand<ExportChannelsCommand>()
             .AddCommand<ExportDirectMessagesCommand>()
             .AddCommand<ExportGuildCommand>()
+            .AddCommand<PurgeAllCommand>()
+            .AddCommand<PurgeChannelsCommand>()
+            .AddCommand<PurgeDirectMessagesCommand>()
+            .AddCommand<PurgeGuildCommand>()
             .AddCommand<GetChannelsCommand>()
             .AddCommand<GetDirectChannelsCommand>()
             .AddCommand<GetGuildsCommand>()
