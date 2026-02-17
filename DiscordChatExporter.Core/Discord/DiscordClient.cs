@@ -726,16 +726,16 @@ public class DiscordClient(
 
         throw response.StatusCode switch
         {
-            HttpStatusCode.Unauthorized => throw new DiscordChatExporterException(
+            HttpStatusCode.Unauthorized => new DiscordChatExporterException(
                 "Authentication token is invalid.",
                 true
             ),
 
-            HttpStatusCode.Forbidden => throw new DiscordChatExporterException(
+            HttpStatusCode.Forbidden => new DiscordChatExporterException(
                 $"Request to '{url}' failed: forbidden."
             ),
 
-            _ => throw new DiscordChatExporterException(
+            _ => new DiscordChatExporterException(
                 $"""
                 Request to '{url}' failed: {response
                     .StatusCode.ToString()
