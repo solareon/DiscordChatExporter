@@ -733,13 +733,13 @@
                     }
 
                     @* Components *@
-                    @if (message.Components.Any(c => c.HasButtons))
+                    @if (message.Components.Any(c => c.Kind == MessageComponentKind.ActionRow && c.HasButtons))
                     {
                         <div class="chatlog__components">
-                            @foreach (var actionRow in message.Components.Where(c => c.HasButtons))
+                            @foreach (var actionRow in message.Components.Where(c => c.Kind == MessageComponentKind.ActionRow && c.HasButtons))
                             {
                                 <div class="chatlog__action-row">
-                                    @foreach (var button in actionRow.Components)
+                                    @foreach (var button in actionRow.Buttons)
                                     {
                                         var styleClass = button.Style switch {
                                             ButtonStyle.Primary => "chatlog__component-button--primary",

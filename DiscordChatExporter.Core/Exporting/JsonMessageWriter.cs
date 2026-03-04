@@ -353,7 +353,7 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
         _writer.WriteEndObject();
         await _writer.FlushAsync(cancellationToken);
     }
-      
+
     private async ValueTask WriteStickerAsync(
         Sticker sticker,
         CancellationToken cancellationToken = default
@@ -373,45 +373,43 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
         await _writer.FlushAsync(cancellationToken);
     }
 
-    private async ValueTask WriteButtonComponentAsync(
-        ButtonComponent button,   
-    {
-        _writer.WriteStartObject();
-
-        _writer.WriteString("type", "Button");
-        _writer.WriteString("style", button.Style.ToString());
-        _writer.WriteString("label", button.Label);
-        _writer.WriteString("url", button.Url);
-        _writer.WriteString("customId", button.CustomId);
-        _writer.WriteString("skuId", button.SkuId?.ToString());
-        _writer.WriteBoolean("isDisabled", button.IsDisabled);
-
-        if (button.Emoji is not null)
-        {
-            _writer.WritePropertyName("emoji");
-            await WriteEmojiAsync(button.Emoji, cancellationToken);
-        }
-
-        _writer.WriteEndObject();
-        await _writer.FlushAsync(cancellationToken);
-    }
-
-    private async ValueTask WriteActionRowComponentAsync(
-        ActionRowComponent actionRow,
+    private async ValueTask WriteComponentAsync(
+        MessageComponent component,
         CancellationToken cancellationToken = default
     )
     {
         _writer.WriteStartObject();
 
-        _writer.WriteString("type", "ActionRow");
+        _writer.WriteString("type", component.Kind.ToString());
 
-        _writer.WriteStartArray("components");
-        foreach (var button in actionRow.Components)
-            await WriteButtonComponentAsync(button, cancellationToken);
-        _writer.WriteEndArray();
+        if (component.Button is not null)
+        {
+            _writer.WriteString("style", component.Button.Style.ToString());
+            _writer.WriteString("label", component.Button.Label);
+            _writer.WriteString("url", component.Button.Url);
+            _writer.WriteString("customId", component.Button.CustomId);
+            _writer.WriteString("skuId", component.Button.SkuId?.ToString());
+            _writer.WriteBoolean("isDisabled", component.Button.IsDisabled);
+
+            if (component.Button.Emoji is not null)
+            {
+                _writer.WritePropertyName("emoji");
+                await WriteEmojiAsync(component.Button.Emoji, cancellationToken);
+            }
+        }
+
+        if (component.Components.Any())
+        {
+            _writer.WriteStartArray("components");
+
+            foreach (var child in component.Components)
+                await WriteComponentAsync(child, cancellationToken);
+
+            _writer.WriteEndArray();
+        }
 
         _writer.WriteEndObject();
-        await _writer.FlushAsync(cancellationToken);        
+        await _writer.FlushAsync(cancellationToken);
     }
 
     public override async ValueTask WritePreambleAsync(
@@ -524,7 +522,7 @@ internal class JsonMessageWriter(Stream stream, ExportContext context)
         _writer.WriteStartArray("components");
 
         foreach (var component in message.Components)
-            await WriteActionRowComponentAsync(component, cancellationToken);
+            await WriteComponentAsync(component, cancellationToken);
 
         _writer.WriteEndArray();
 

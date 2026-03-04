@@ -22,9 +22,9 @@ public partial record Message(
     bool IsPinned,
     string Content,
     IReadOnlyList<Attachment> Attachments,
-    IReadOnlyList<ActionRowComponent> Components,
     IReadOnlyList<Embed> Embeds,
     IReadOnlyList<Sticker> Stickers,
+    IReadOnlyList<MessageComponent> Components,
     IReadOnlyList<Reaction> Reactions,
     IReadOnlyList<User> MentionedUsers,
     MessageReference? Reference,
@@ -152,14 +152,6 @@ public partial record Message
                 .ToArray()
             ?? [];
 
-        var components =
-            json.GetPropertyOrNull("components")
-                ?.EnumerateArrayOrNull()
-                ?.Select(ActionRowComponent.Parse)
-                .WhereNotNull()
-                .ToArray()
-            ?? [];
-
         var embeds = NormalizeEmbeds(
             json.GetPropertyOrNull("embeds")?.EnumerateArrayOrNull()?.Select(Embed.Parse).ToArray()
                 ?? []
@@ -169,6 +161,14 @@ public partial record Message
             json.GetPropertyOrNull("sticker_items")
                 ?.EnumerateArrayOrNull()
                 ?.Select(Sticker.Parse)
+                .ToArray()
+            ?? [];
+
+        var components =
+            json.GetPropertyOrNull("components")
+                ?.EnumerateArrayOrNull()
+                ?.Select(MessageComponent.Parse)
+                .WhereNotNull()
                 .ToArray()
             ?? [];
 
@@ -209,9 +209,9 @@ public partial record Message
             isPinned,
             content,
             attachments,
-            components,
             embeds,
             stickers,
+            components,
             reactions,
             mentionedUsers,
             messageReference,
